@@ -87,26 +87,6 @@ func getMultipleStyledString(styles string, value string) string {
 	return fmt.Sprintf("%s%s%s", escapedStyles(styles), value, resetStyle)
 }
 
-// func getSingleString(color Style, strs ...string) string {
-// 	if len(strs) == 0 {
-// 		return ""
-// 	}
-
-// 	var finalString string
-// 	for index, str := range strs {
-// 		if strings.Contains(str, escape) && index != len(strs)-1 {
-// 			finalString += str + escapedStyle(color) + " "
-// 		} else if index == len(strs)-1 {
-// 			finalString += str
-// 		} else {
-// 			finalString += str + " "
-// 		}
-// 	}
-
-// 	// return getColoredString(color, finalString)
-// 	return getStyledString(color, finalString)
-// }
-
 // Method to apply one or more styles to a string. If no style argument is provided then given string is returned as is.
 //
 // If multiple foreground / background styles are provided then the last corresponding foreground / background will be applied.
@@ -124,7 +104,15 @@ func StyledString(val string, styles ...Style) string {
 	lastForeground := getLastForeground(styles...)
 	lastBackground := getLastBackground(styles...)
 
-	stylesCopy := slices.Clone(styles)
+	// stylesCopy := slices.Clone(styles)
+	var stylesCopy []Style
+
+	// Handle duplicates
+	for _, item := range styles {
+		if !slices.Contains(stylesCopy, item) {
+			stylesCopy = append(stylesCopy, item)
+		}
+	}
 	if lastForeground != -1 {
 		stylesCopy = addorReplaceForeground(lastForeground, stylesCopy...)
 	}
@@ -135,17 +123,16 @@ func StyledString(val string, styles ...Style) string {
 	slices.Sort(stylesCopy)
 
 	finalStyle := ""
-
-	for _, str := range styles {
+	for _, str := range stylesCopy {
 		finalStyle += fmt.Sprint(str) + ";"
 	}
-
 	finalStyle = finalStyle[0 : len(finalStyle)-1]
-	styledString := ""
+
+	stringWithNoNewLine := removeNewLine(val)
+	styledString := getMultipleStyledString(finalStyle, stringWithNoNewLine)
 
 	if strings.HasSuffix(val, "\n") {
-		stringWithNoNewLine := removeNewLine(val)
-		styledString += getMultipleStyledString(finalStyle, stringWithNoNewLine) + "\n"
+		styledString += "\n"
 	}
 	return styledString
 }
@@ -184,6 +171,11 @@ func (chalk *Chalk) Add(styles ...Style) *Chalk {
 	lastBackground := getLastBackground(styles...)
 
 	stylesCopy := slices.Clone(chalk.styles)
+	for _, item := range styles {
+		if !slices.Contains(stylesCopy, item) {
+			stylesCopy = append(stylesCopy, item)
+		}
+	}
 	if lastForeground != -1 {
 		stylesCopy = addorReplaceForeground(lastForeground, stylesCopy...)
 	}
@@ -193,8 +185,7 @@ func (chalk *Chalk) Add(styles ...Style) *Chalk {
 
 	slices.Sort(stylesCopy)
 
-	newChalk := Chalk{}
-	newChalk.styles = append(chalk.styles, styles...)
+	newChalk := Chalk{styles: stylesCopy}
 	return &newChalk
 }
 
@@ -208,7 +199,8 @@ func (chalk *Chalk) Remove(styles ...Style) *Chalk {
 		return chalk
 	}
 
-	stylesFiltered := filterSlice(chalk.styles, styles)
+	stylesCopy := slices.Clone(chalk.styles)
+	stylesFiltered := filterSlice(stylesCopy, styles)
 
 	newChalk := &Chalk{styles: stylesFiltered}
 
@@ -228,13 +220,17 @@ func (chalk *Chalk) Println(value ...string) {
 
 // Method to get string with formatted style
 func (chalk *Chalk) ToString(value ...string) string {
-	combinedStyleString := convertIntSliceToString(chalk.styles)
-
 	if len(value) == 0 {
 		return ""
 	}
-
 	combinedValue := combineStrings(value...)
+
+	var combinedStyleString string
+	if len(chalk.styles) == 0 {
+		return combinedValue
+	} else {
+		combinedStyleString = convertIntSliceToString(chalk.styles)
+	}
 
 	// return getStyledString(combinedStyleString, combinedValue)
 	return getMultipleStyledString(combinedStyleString, combinedValue)
@@ -292,8 +288,8 @@ func filterSlice(source []Style, remove []Style) []Style {
 
 	var sliceCopy []Style
 
-	for _, item := range remove {
-		if !slices.Contains(source, item) {
+	for _, item := range source {
+		if !slices.Contains(remove, item) {
 			sliceCopy = append(sliceCopy, item)
 		}
 	}
@@ -306,7 +302,7 @@ func getLastForeground(styles ...Style) Style {
 	for index := range styles {
 		reverseIndex := len(styles) - index - 1
 		style := styles[reverseIndex]
-		if (style >= 30 && style < 38) || (style >= 90 || style < 98) {
+		if (style >= 30 && style < 38) || (style >= 90 && style < 98) {
 			return style
 		}
 	}
@@ -319,7 +315,7 @@ func getLastBackground(styles ...Style) Style {
 	for index := range styles {
 		reverseIndex := len(styles) - index - 1
 		style := styles[reverseIndex]
-		if (style >= 40 && style < 48) || (style >= 100 || style < 108) {
+		if (style >= 40 && style < 48) || (style >= 100 && style < 108) {
 			return style
 		}
 	}
@@ -333,7 +329,7 @@ func addorReplaceForeground(color Style, styles ...Style) []Style {
 	var stylesCopy []Style
 	for index := range styles {
 		style := styles[index]
-		if (style >= 30 && style < 38) || (style >= 90 || style < 98) {
+		if (style >= 30 && style < 38) || (style >= 90 && style < 98) {
 			if !replaced {
 				// styles[index] = color
 				stylesCopy = append(stylesCopy, color)
@@ -357,7 +353,7 @@ func addorReplaceBackground(color Style, styles ...Style) []Style {
 	var stylesCopy []Style
 	for index := range styles {
 		style := styles[index]
-		if (style >= 40 && style < 48) || (style >= 100 || style < 108) {
+		if (style >= 40 && style < 48) || (style >= 100 && style < 108) {
 			if !replaced {
 				// styles[index] = color
 				stylesCopy = append(stylesCopy, color)
@@ -378,6 +374,11 @@ func addorReplaceBackground(color Style, styles ...Style) []Style {
 // ----------------------------
 // Methods for colored strings
 // ----------------------------
+
+// Method to print string with black foreground color
+func Black(value ...string) string {
+	return getSingleStyledString(FgBlack, value...)
+}
 
 // Method to print string with red foreground color
 func Red(value ...string) string {
@@ -412,6 +413,11 @@ func Cyan(value ...string) string {
 // Method to print string with white foreground color
 func White(value ...string) string {
 	return getSingleStyledString(FgWhite, value...)
+}
+
+// Method to print string with bright red foreground color
+func BrightBlack(value ...string) string {
+	return getSingleStyledString(FgBrightBlack, value...)
 }
 
 // Method to print string with bright red foreground color
@@ -453,6 +459,11 @@ func BrightWhite(value ...string) string {
 // Methods for colored backgrounds
 // ----------------------------
 
+// Method to print string with black background color
+func BlackBg(value ...string) string {
+	return getSingleStyledString(BgBlack, value...)
+}
+
 // Method to print string with red background color
 func RedBg(value ...string) string {
 	return getSingleStyledString(BgRed, value...)
@@ -486,6 +497,11 @@ func CyanBg(value ...string) string {
 // Method to print string with white background color
 func WhiteBg(value ...string) string {
 	return getSingleStyledString(BgWhite, value...)
+}
+
+// Method to print string with bright black background color
+func BrightBlackBg(value ...string) string {
+	return getSingleStyledString(BgBrightBlack, value...)
 }
 
 // Method to print string with bright red background color
